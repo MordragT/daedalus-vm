@@ -1,16 +1,112 @@
 use std::mem;
-use symbol::{Data, Flag, Kind, Operator, Properties, SymTable, SymbolBuilder};
+use std::num::{NonZeroI32, NonZeroU8};
+use symbol::{Data, Flag, Kind, Properties, SymTable, SymbolBuilder};
 use zen_parser::ZenParser;
 
 mod symbol;
 
+#[repr(u8)]
+pub enum Operator {
+    Add = 0,             // a + b
+    Subract = 1,         // a - b
+    Multiply = 2,        // a * b
+    Divide = 3,          // a / b
+    Mod = 4,             // a % b
+    BinOr = 5,           // a | b
+    BinAnd = 6,          // a & b
+    Less = 7,            // a < b
+    Greater = 8,         // a > b
+    Assign = 9,          // a = b
+    LogOr = 11,          // a || b
+    LogAnd = 12,         // a && b
+    ShiftLeft = 13,      // a << b
+    ShiftRight = 14,     // a >> b
+    LessOrEqual = 15,    // a <= b
+    Equal = 16,          // a == b
+    NotEqual = 17,       // a != b
+    GreaterOrEqual = 18, // a >= b
+    AssignAdd = 19,      // a += b (a = a + b)
+    AssignSubtract = 20, // a -= b (a = a - b)
+    AssignMultiply = 21, // a *= b (a = a * b)
+    AssignDivide = 22,   // a /= b (a = a / b)
+    Plus = 30,           // +a
+    Minus = 31,          // -a
+    Not = 32,            // !a
+    Negate = 33,         // ~a
+    //	LeftBracket     = 40,    // '('
+    //	RightBracket    = 41,    // ')'
+    //	Semicolon       = 42,    // ';'
+    //	Comma           = 43,    // ','
+    //	CurlyBracket    = 44,    // '{', '}'
+    //	None            = 45,
+    //	Float           = 51,
+    //	Var             = 52,
+    //	Operator        = 53,
+    Ret = 60,
+    Call = 61,
+    CallExternal = 62,
+    //	PopInt          = 63,
+    PushInt = 64,
+    PushVar = 65,
+    //	PushString      = 66,
+    PushInstance = 67,
+    //	PushIndex       = 68,
+    //	PopVar          = 69,
+    AssignString = 70,
+    AssignStringRef = 71,
+    AssignFunc = 72,
+    AssignFloat = 73,
+    AssignInstance = 74,
+    Jump = 75,
+    JumpIf = 76,
+    SetInstance = 80,
+    //	Skip            = 90,
+    //	Label           = 91,
+    //	Func            = 92,
+    //	FuncEnd         = 93,
+    //	Class           = 94,
+    //	ClassEnd        = 95,
+    //	Instance        = 96,
+    //	InstanceEnd     = 97,
+    //	String          = 98,
+    //	Array           = 180,  // Var + 128
+    PushArrayVar = 245, // PushVar + Array
+}
 pub struct StackOpCode {
     operator: Operator,
-    address: i32,
-    symbol: i32,
-    value: i32,
-    index: u8,
+    address: Option<NonZeroI32>,
+    symbol: Option<NonZeroI32>,
+    value: Option<NonZeroI32>,
+    index: Option<NonZeroU8>,
     operator_size: usize,
+}
+impl StackOpCode {
+    pub fn new(operator: Operator, operator_size: usize) -> StackOpCode {
+        StackOpCode {
+            operator,
+            address: None,
+            symbol: None,
+            value: None,
+            index: None,
+            operator_size,
+        }
+    }
+    pub fn with_address(&mut self, address: i32) -> &mut Self {
+        self.address = NonZeroI32::new(address);
+        self
+    }
+    pub fn with_symbol(&mut self, symbol: i32) -> &mut Self {
+        self.symbol = NonZeroI32::new(symbol);
+        self
+    }
+    pub fn with_value(&mut self, value: i32) -> &mut Self {
+        self.value = NonZeroI32::new(value);
+        self
+    }
+    pub fn with_index(&mut self, index: u8) -> &mut Self {
+        self.index = NonZeroU8::new(index);
+        self
+    }
 }
 #[derive(Copy, Clone)]
 pub struct Stack {
@@ -21,6 +117,7 @@ pub struct Stack {
 pub struct File {
     parser: ZenParser,
     pub sym_table: SymTable,
+    sort_table: Vec<u32>,
     // offset, size
     stack: Stack,
 }
@@ -29,9 +126,11 @@ impl File {
     pub fn new() -> Result<File, String> {
         let parser = ZenParser::new();
         let version = parser.read_binary::<u8>().unwrap();
+        println!("Version: {}", version);
+        println!("Reading Sym Table...");
         let count = parser.read_binary::<u32>().unwrap();
         let mut sym_table = SymTable::with_capacity(count as usize);
-        let sort_table = parser.read_binary_as_vec::<u32>(count as usize);
+        let sort_table = parser.read_binary_as_vec::<u32>(count as usize).unwrap();
         for index in 0..count {
             let name = match parser.read_binary::<u32>() {
                 Ok(_) => {
@@ -112,14 +211,23 @@ impl File {
 
             sym_table.insert_symbol(index as usize, symbol_builder.build().unwrap());
         }
-        Ok(File {
+        let size = parser.read_binary::<i32>().unwrap() as usize;
+        let offset = parser.get_seek();
+
+        let file = File {
             parser,
             sym_table,
-            stack: Stack {
-                offset: 0x0,
-                size: 0x0,
-            },
-        })
+            sort_table,
+            stack: Stack { offset, size },
+        };
+
+        println!("Reading Stack...");
+
+        while file.parser.get_seek() < file.parser.get_file_size() {
+            file.get_stack_op_code(file.parser.get_seek());
+        }
+
+        Ok(file)
     }
     pub fn get_stack(&self) -> Stack {
         self.stack
@@ -129,86 +237,65 @@ impl File {
         let operator = self.parser.read_binary::<Operator>().unwrap();
         //let operator: Operator = unsafe { mem::transmute(operator_num) };
         let stack_op_code = match operator {
-            Operator::Call => StackOpCode {
-                operator,
-                address: self.parser.read_binary::<i32>().unwrap(),
-                symbol: 0,
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            Operator::CallExternal => StackOpCode {
-                operator,
-                address: 0,
-                symbol: self.parser.read_binary::<i32>().unwrap(),
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            Operator::PushInt => StackOpCode {
-                operator,
-                address: 0,
-                symbol: 0,
-                value: self.parser.read_binary::<i32>().unwrap(),
-                index: 0,
-                operator_size: mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            Operator::PushVar => StackOpCode {
-                operator,
-                address: 0,
-                symbol: self.parser.read_binary::<i32>().unwrap(),
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            Operator::PushInstance => StackOpCode {
-                operator,
-                address: 0,
-                symbol: self.parser.read_binary::<i32>().unwrap(),
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            Operator::Jump => StackOpCode {
-                operator,
-                address: self.parser.read_binary::<i32>().unwrap(),
-                symbol: 0,
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<i32>(),
-            },
-            Operator::JumpIf => StackOpCode {
-                operator,
-                address: self.parser.read_binary::<i32>().unwrap(),
-                symbol: 0,
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            Operator::SetInstance => StackOpCode {
-                operator,
-                address: 0,
-                symbol: self.parser.read_binary::<i32>().unwrap(),
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            Operator::PushArrayVar => StackOpCode {
-                operator,
-                address: 0,
-                symbol: self.parser.read_binary::<i32>().unwrap(),
-                value: 0,
-                index: self.parser.read_binary::<u8>().unwrap(),
-                operator_size: 2 * mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            _ => StackOpCode {
-                operator,
-                address: 0,
-                symbol: 0,
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<u8>(),
-            },
+            Operator::Call => {
+                let mut op_code =
+                    StackOpCode::new(operator, mem::size_of::<u8>() + mem::size_of::<i32>());
+                op_code.with_address(self.parser.read_binary::<i32>().unwrap());
+                op_code
+            }
+            Operator::CallExternal => {
+                let mut op_code =
+                    StackOpCode::new(operator, mem::size_of::<u8>() + mem::size_of::<i32>());
+                op_code.with_symbol(self.parser.read_binary::<i32>().unwrap());
+                op_code
+            }
+            Operator::PushInt => {
+                let mut op_code =
+                    StackOpCode::new(operator, mem::size_of::<u8>() + mem::size_of::<i32>());
+                op_code.with_value(self.parser.read_binary::<i32>().unwrap());
+                op_code
+            }
+            Operator::PushVar => {
+                let mut op_code =
+                    StackOpCode::new(operator, mem::size_of::<u8>() + mem::size_of::<i32>());
+                op_code.with_symbol(self.parser.read_binary::<i32>().unwrap());
+                op_code
+            }
+            Operator::PushInstance => {
+                let mut op_code =
+                    StackOpCode::new(operator, mem::size_of::<u8>() + mem::size_of::<i32>());
+                op_code.with_symbol(self.parser.read_binary::<i32>().unwrap());
+                op_code
+            }
+            Operator::Jump => {
+                let mut op_code = StackOpCode::new(operator, mem::size_of::<i32>());
+                op_code.with_address(self.parser.read_binary::<i32>().unwrap());
+                op_code
+            }
+            Operator::JumpIf => {
+                let mut op_code =
+                    StackOpCode::new(operator, mem::size_of::<u8>() + mem::size_of::<i32>());
+                op_code.with_address(self.parser.read_binary::<i32>().unwrap());
+                op_code
+            }
+            Operator::SetInstance => {
+                let mut op_code =
+                    StackOpCode::new(operator, mem::size_of::<u8>() + mem::size_of::<i32>());
+                op_code.with_symbol(self.parser.read_binary::<i32>().unwrap());
+                op_code
+            }
+            Operator::PushArrayVar => {
+                let mut op_code =
+                    StackOpCode::new(operator, mem::size_of::<u8>() + mem::size_of::<i32>());
+                op_code
+                    .with_symbol(self.parser.read_binary::<i32>().unwrap())
+                    .with_index(self.parser.read_binary::<u8>().unwrap());
+                op_code
+            }
+            _ => {
+                let op_code = StackOpCode::new(operator, mem::size_of::<u8>());
+                op_code
+            }
         };
         stack_op_code
     }
