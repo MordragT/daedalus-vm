@@ -1,4 +1,5 @@
 pub mod file;
+pub mod stdlib;
 #[cfg(test)]
 mod tests {
     #[test]
