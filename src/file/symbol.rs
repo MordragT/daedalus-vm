@@ -2,7 +2,6 @@ use bitfield::{bitfield, BitRange};
 use std::collections::HashMap;
 use std::mem;
 use std::num::{NonZeroI32, NonZeroU32};
-use zen_parser::ZenParser;
 
 enum InstanceClass {
     Npc,
@@ -19,7 +18,7 @@ enum InstanceClass {
 }
 #[repr(u8)]
 #[derive(Copy, Clone)]
-enum Flag {
+pub enum Flag {
     Const = 0b00001,
     Return = 0b00010,
     ClassVar = 0b00100,
@@ -28,7 +27,7 @@ enum Flag {
 }
 #[repr(u8)]
 #[derive(Debug)]
-enum Kind {
+pub enum Kind {
     Void,
     Float,
     Int,
@@ -38,8 +37,13 @@ enum Kind {
     Prototype,
     Instance,
 }
+pub enum Data {
+    Float(f32),
+    Int(i32),
+    Char(char),
+}
 #[repr(u8)]
-enum Operator {
+pub enum Operator {
     Add = 0,             // a + b
     Subract = 1,         // a - b
     Multiply = 2,        // a * b
@@ -105,6 +109,7 @@ enum Operator {
     //	Array           = 180,  // Var + 128
     PushArrayVar = 245, // PushVar + Array
 }
+
 bitfield! {
     struct Element(u32);
     u32, get_count, set_count: 12, 0;
@@ -160,6 +165,25 @@ pub struct Properties {
     char_count: CharStructure,
 }
 impl Properties {
+    pub fn new(
+        off_cls_ret: i32,
+        element: u32,
+        file_index: u32,
+        line_start: u32,
+        line_count: u32,
+        char_start: u32,
+        char_count: u32,
+    ) -> Properties {
+        Properties {
+            off_cls_ret,
+            element: Element(element),
+            file_index: Structure(file_index),
+            line_start: Structure(line_start),
+            line_count: Structure(line_count),
+            char_start: CharStructure(char_start),
+            char_count: CharStructure(char_count),
+        }
+    }
     pub fn has_flag(&self, flag: Flag) -> bool {
         self.element.get_flags() & flag as u8 == flag as u8
     }
@@ -176,13 +200,8 @@ impl Properties {
         self.element.get_kind()
     }
 }
-enum Data {
-    Float(f32),
-    Int(i32),
-    Char(char),
-}
-pub struct SymbolBuilder<'a> {
-    name: Option<&'a str>,
+pub struct SymbolBuilder {
+    name: String,
     properties: Option<Properties>,
     // Valid for Classes that write directly to the engine
     // Offset to be able to access class member via name
@@ -195,10 +214,10 @@ pub struct SymbolBuilder<'a> {
     data: Option<Vec<Data>>,
 }
 
-impl<'a> SymbolBuilder<'a> {
-    pub fn new(name: Option<&str>) -> SymbolBuilder {
+impl SymbolBuilder {
+    pub fn new(name: &str) -> SymbolBuilder {
         SymbolBuilder {
-            name,
+            name: String::from(name),
             properties: None,
             class_member_offset: None,
             class_member_array_size: None,
@@ -231,7 +250,7 @@ impl<'a> SymbolBuilder<'a> {
         self.data = Some(data);
         self
     }
-    pub fn build(self) -> Result<Symbol<'a>, String> {
+    pub fn build<'a>(self) -> Result<Symbol, String> {
         if self.properties.is_none() {
             return Err("Cannot build Symbol, Properties are missing.".to_owned());
         }
@@ -247,7 +266,7 @@ impl<'a> SymbolBuilder<'a> {
         }
         Ok(Symbol {
             name: self.name,
-            properties: self.properties.unwrap(),
+            properties,
             class_member_offset: self.class_member_offset,
             class_member_array_size: self.class_member_array_size,
             parent: self.parent,
@@ -257,9 +276,9 @@ impl<'a> SymbolBuilder<'a> {
     }
 }
 
-pub struct Symbol<'a> {
-    name: Option<&'a str>,
-    properties: Properties,
+pub struct Symbol {
+    name: String,
+    pub properties: Properties,
     class_member_offset: Option<NonZeroI32>,
     // Valid for Classes that write directly to the engine
     // Store array size of the Class member var
@@ -269,11 +288,13 @@ pub struct Symbol<'a> {
     data: Option<Vec<Data>>,
 }
 
-impl<'a> Symbol<'a> {
-    pub fn get_name(&self) -> String {
-        match self.name {
-            Some(name) => return name.to_owned(),
-            None => return "Undefined".to_owned(),
+impl Symbol {
+    pub fn get_name(&self) -> Option<&str> {
+        //let name = self.name.clone();
+        if self.name == "" {
+            return None;
+        } else {
+            return Some(self.name.as_str());
         }
     }
     pub fn get_address(&self) -> Result<NonZeroU32, &str> {
@@ -282,22 +303,22 @@ impl<'a> Symbol<'a> {
             None => return Err("Address is not specified."),
         }
     }
-    pub fn get_data(&self) -> Result<Vec<Data>, &str> {
-        match self.data {
-            Some(data) => return Ok(data),
-            None => return Err("Data not specified"),
-        }
-    }
+    // pub fn get_data(&self) -> Result<Vec<Data>, &str> {
+    //     match self.data {
+    //         Some(data) => return Ok(data),
+    //         None => return Err("Data not specified"),
+    //     }
+    // }
 }
-pub struct SymTable<'a> {
+pub struct SymTable {
     sort_table: Vec<u32>,
-    symbols: Vec<Symbol<'a>>,
-    pub symbols_by_name: HashMap<&'a str, usize>,
+    symbols: Vec<Symbol>,
+    pub symbols_by_name: HashMap<String, usize>,
     pub functions_by_address: HashMap<usize, usize>,
 }
 
-impl<'a> SymTable<'a> {
-    pub fn new() -> SymTable<'a> {
+impl SymTable {
+    pub fn new() -> SymTable {
         SymTable {
             sort_table: vec![],
             symbols: vec![],
@@ -305,7 +326,7 @@ impl<'a> SymTable<'a> {
             functions_by_address: HashMap::new(),
         }
     }
-    pub fn with_capacity(symbol_count: usize) -> SymTable<'a> {
+    pub fn with_capacity(symbol_count: usize) -> SymTable {
         let sort_table = Vec::with_capacity(symbol_count);
         let symbols = Vec::with_capacity(symbol_count);
         let symbols_by_name = HashMap::with_capacity(symbol_count);
@@ -349,7 +370,20 @@ impl<'a> SymTable<'a> {
             None => return Err(format!("Function at address {} not found", address)),
         }
     }
-    pub fn insert_symbol(&mut self, index: usize, symbol: Symbol<'a>) -> usize {
+    pub fn insert_symbol(&mut self, index: usize, symbol: Symbol) -> usize {
+        let name = symbol.get_name();
+        if let Some(name) = name {
+            self.symbols_by_name
+                .insert(String::from(name), index as usize);
+        }
+        if (symbol.properties.get_kind() as u8 == Kind::Prototype as u8
+            || symbol.properties.get_kind() as u8 == Kind::Func as u8)
+            && !symbol.properties.has_flag(Flag::ClassVar)
+            && symbol.properties.has_flag(Flag::Const)
+        {
+            self.functions_by_address
+                .insert(symbol.get_address().unwrap().get() as usize, index as usize);
+        }
         self.symbols.insert(index, symbol);
         self.symbols.len()
     }
@@ -378,226 +412,5 @@ impl<'a> SymTable<'a> {
                 callback(index, symbol);
             }
         });
-    }
-}
-
-pub struct StackOpCode {
-    operator: Operator,
-    address: i32,
-    symbol: i32,
-    value: i32,
-    index: u8,
-    operator_size: usize,
-}
-#[derive(Copy, Clone)]
-pub struct Stack {
-    offset: usize,
-    size: usize,
-}
-
-pub struct File<'a> {
-    parser: ZenParser,
-    pub sym_table: SymTable<'a>,
-    // offset, size
-    stack: Stack,
-}
-
-impl<'a> File<'a> {
-    pub fn new() -> Result<File<'a>, String> {
-        let parser = ZenParser::new();
-        let version = parser.read_binary::<u8>().unwrap();
-        let count = parser.read_binary::<u32>().unwrap();
-        let mut sym_table = SymTable::with_capacity(count as usize);
-        let sort_table = parser.read_binary_as_vec::<u32>(count as usize);
-        for index in 0..count {
-            let name = match parser.read_binary::<u32>() {
-                Ok(_) => {
-                    let mut inner = String::new();
-                    while let Ok(ch) = parser.read_binary::<char>() {
-                        if ch == 0x0a as char {
-                            break;
-                        }
-                        if ch != 0xff as char {
-                            // FIXME: if Bedinung eigentlich nicht notwendig
-                            inner.push(ch);
-                        }
-                    }
-                    Some(inner.as_str())
-                }
-                Err(_) => None,
-            };
-            let mut symbol_builder = SymbolBuilder::new(name);
-
-            let properties = Properties {
-                off_cls_ret: parser.read_binary::<i32>().unwrap(),
-                element: Element(parser.read_binary::<u32>().unwrap()),
-                // (Value, Reserved)
-                file_index: Structure(parser.read_binary::<u32>().unwrap()),
-                line_start: Structure(parser.read_binary::<u32>().unwrap()),
-                line_count: Structure(parser.read_binary::<u32>().unwrap()),
-                char_start: CharStructure(parser.read_binary::<u32>().unwrap()),
-                char_count: CharStructure(parser.read_binary::<u32>().unwrap()),
-            };
-            symbol_builder.with_properties(properties);
-
-            if properties.is_not_flag(Flag::ClassVar) {
-                match properties.get_kind() {
-                    Kind::Float => {
-                        symbol_builder.with_data(
-                            parser
-                                .read_binary_as_vec::<Data>(
-                                    mem::size_of::<f32>() * properties.element.get_count() as usize,
-                                )
-                                .unwrap(),
-                        );
-                    }
-                    Kind::Int => {
-                        symbol_builder.with_data(
-                            parser
-                                .read_binary_as_vec::<Data>(
-                                    mem::size_of::<u32>() * properties.element.get_count() as usize,
-                                )
-                                .unwrap(),
-                        );
-                    }
-                    Kind::CharString => {
-                        let mut inner = vec![];
-                        for _ in 0..properties.get_count() {
-                            while let Ok(ch) = parser.read_binary::<char>() {
-                                if ch == 0x0a as char {
-                                    break;
-                                }
-                                if ch != 0xff as char {
-                                    inner.push(Data::Char(ch));
-                                }
-                            }
-                            // TODO Replace \\n with \n
-                        }
-                        symbol_builder.with_data(inner);
-                    }
-                    Kind::Class => {
-                        symbol_builder.with_class_offset(parser.read_binary::<i32>().unwrap());
-                    }
-                    Kind::Func | Kind::Prototype | Kind::Instance => {
-                        symbol_builder.with_address(parser.read_binary::<u32>().unwrap());
-                    }
-                };
-            }
-
-            symbol_builder.with_parent(parser.read_binary::<u32>().unwrap());
-
-            if let Some(name) = name {
-                sym_table.symbols_by_name.insert(name, index as usize);
-            }
-            if (properties.get_kind() as u8 == Kind::Prototype as u8
-                || properties.get_kind() as u8 == Kind::Func as u8)
-                && !properties.has_flag(Flag::ClassVar)
-                && properties.has_flag(Flag::Const)
-            {
-                sym_table
-                    .functions_by_address
-                    .insert(properties.get_address() as usize, index as usize);
-            }
-            sym_table.insert_symbol(index as usize, symbol);
-        }
-        Ok(File {
-            parser,
-            sym_table,
-            stack: Stack {
-                offset: 0x0,
-                size: 0x0,
-            },
-        })
-    }
-    pub fn get_stack(&self) -> Stack {
-        self.stack
-    }
-    pub fn get_stack_op_code(&self, proc_counter: usize) -> StackOpCode {
-        self.parser.set_seek(proc_counter);
-        let operator = self.parser.read_binary::<Operator>().unwrap();
-        //let operator: Operator = unsafe { mem::transmute(operator_num) };
-        let stack_op_code = match operator {
-            Operator::Call => StackOpCode {
-                operator,
-                address: self.parser.read_binary::<i32>().unwrap(),
-                symbol: 0,
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            Operator::CallExternal => StackOpCode {
-                operator,
-                address: 0,
-                symbol: self.parser.read_binary::<i32>().unwrap(),
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            Operator::PushInt => StackOpCode {
-                operator,
-                address: 0,
-                symbol: 0,
-                value: self.parser.read_binary::<i32>().unwrap(),
-                index: 0,
-                operator_size: mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            Operator::PushVar => StackOpCode {
-                operator,
-                address: 0,
-                symbol: self.parser.read_binary::<i32>().unwrap(),
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            Operator::PushInstance => StackOpCode {
-                operator,
-                address: 0,
-                symbol: self.parser.read_binary::<i32>().unwrap(),
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            Operator::Jump => StackOpCode {
-                operator,
-                address: self.parser.read_binary::<i32>().unwrap(),
-                symbol: 0,
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<i32>(),
-            },
-            Operator::JumpIf => StackOpCode {
-                operator,
-                address: self.parser.read_binary::<i32>().unwrap(),
-                symbol: 0,
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            Operator::SetInstance => StackOpCode {
-                operator,
-                address: 0,
-                symbol: self.parser.read_binary::<i32>().unwrap(),
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            Operator::PushArrayVar => StackOpCode {
-                operator,
-                address: 0,
-                symbol: self.parser.read_binary::<i32>().unwrap(),
-                value: 0,
-                index: self.parser.read_binary::<u8>().unwrap(),
-                operator_size: 2 * mem::size_of::<u8>() + mem::size_of::<i32>(),
-            },
-            _ => StackOpCode {
-                operator,
-                address: 0,
-                symbol: 0,
-                value: 0,
-                index: 0,
-                operator_size: mem::size_of::<u8>(),
-            },
-        };
-        stack_op_code
     }
 }
