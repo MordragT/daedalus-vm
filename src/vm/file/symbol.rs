@@ -1,30 +1,8 @@
+use super::{Flag, Kind};
+use crate::stdlib::InstanceClass;
 use bitfield::{bitfield, BitRange};
-use enumflags2::BitFlags;
-use std::collections::HashMap;
 use std::mem;
 use std::num::{NonZeroI32, NonZeroU32};
-
-#[repr(u8)]
-#[derive(BitFlags, Copy, Clone)]
-pub enum Flag {
-    Const = 0b00001,
-    Return = 0b00010,
-    ClassVar = 0b00100,
-    External = 0b01000,
-    Merged = 0b10000,
-}
-#[repr(u8)]
-#[derive(Copy, Clone, Debug)]
-pub enum Kind {
-    Void = 0,
-    Float = 1,
-    Int = 2,
-    CharString = 3,
-    Class = 4,
-    Func = 5,
-    Prototype = 6,
-    Instance = 7,
-}
 pub enum Data {
     Float(f32),
     Int(i32),
@@ -117,6 +95,8 @@ pub struct SymbolBuilder {
     // Valid for Classes that write directly to the engine
     // Store array size of the Class member var
     class_member_array_size: Option<NonZeroI32>,
+    instance_data_handle: Option<Handle>,
+    instance_data_class: Option<InstanceClass>,
     parent: Option<NonZeroU32>,
     address: Option<NonZeroU32>,
     data: Option<Vec<Data>>,
@@ -129,6 +109,8 @@ impl SymbolBuilder {
             properties: None,
             class_member_offset: None,
             class_member_array_size: None,
+            instance_data_handle: None,
+            instance_data_class: None,
             parent: None,
             address: None,
             data: None,
@@ -158,6 +140,11 @@ impl SymbolBuilder {
         self.class_member_array_size = NonZeroI32::new(array_size);
         self
     }
+    pub fn with_instance_data(&mut self, handle: Handle, kind: InstanceClass) -> &mut Self {
+        self.instance_data_handle = handle;
+        self.instance_data_class = kind;
+        self
+    }
     pub fn with_parent(&mut self, parent: u32) -> &mut Self {
         self.parent = NonZeroU32::new(parent);
         self
@@ -184,11 +171,17 @@ impl SymbolBuilder {
             }
             _ => (),
         }
+        let instance_data_handle = match self.instance_data_handle {
+            Some(handle) => handle,
+            None => Handle::new(),
+        };
         Ok(Symbol {
             name: self.name,
             properties,
             class_member_offset: self.class_member_offset,
             class_member_array_size: self.class_member_array_size,
+            instance_data_handle,
+            instance_data_class: self.instance_data_class,
             parent: self.parent,
             address: self.address,
             data: self.data,
@@ -203,6 +196,8 @@ pub struct Symbol {
     // Valid for Classes that write directly to the engine
     // Store array size of the Class member var
     class_member_array_size: Option<NonZeroI32>,
+    instance_data_handle: Handle,
+    instance_data_class: Option<InstanceClass>,
     parent: Option<NonZeroU32>,
     address: Option<NonZeroU32>,
     data: Option<Vec<Data>>,
@@ -238,116 +233,8 @@ impl Symbol {
             None => return Err("Data not specified"),
         }
     }
-}
-pub struct SymTable {
-    sort_table: Vec<u32>,
-    symbols: Vec<Symbol>,
-    pub symbols_by_name: HashMap<String, usize>,
-    pub functions_by_address: HashMap<usize, usize>,
-}
-
-impl SymTable {
-    pub fn new() -> SymTable {
-        SymTable {
-            sort_table: vec![],
-            symbols: vec![],
-            symbols_by_name: HashMap::new(),
-            functions_by_address: HashMap::new(),
-        }
-    }
-    pub fn with_capacity(symbol_count: usize) -> SymTable {
-        let sort_table = Vec::with_capacity(symbol_count);
-        let symbols = Vec::with_capacity(symbol_count);
-        let symbols_by_name = HashMap::with_capacity(symbol_count);
-        SymTable {
-            sort_table,
-            symbols,
-            symbols_by_name,
-            functions_by_address: HashMap::new(),
-        }
-    }
-    pub fn write_sort_table(&mut self, table: &[u32]) {
-        self.sort_table = Vec::from(table);
-    }
-    pub fn has_symbol_name(&self, sym_name: &str) -> Result<(), String> {
-        match self.symbols_by_name.get(sym_name) {
-            Some(_) => return Ok(()),
-            None => return Err(format!("Symbol {} not found", sym_name)),
-        }
-    }
-    pub fn get_symbol_by_name(&self, sym_name: &str) -> Result<&Symbol, String> {
-        match self.symbols_by_name.get(sym_name) {
-            Some(index) => return Ok(self.symbols.get(*index).unwrap()),
-            None => return Err(format!("Symbol {} not found", sym_name)),
-        }
-    }
-    pub fn get_symbol_index_by_name(&self, sym_name: &str) -> Result<usize, String> {
-        match self.symbols_by_name.get(sym_name) {
-            Some(index) => return Ok(*index),
-            None => return Err(format!("Symbol {} not found", sym_name)),
-        }
-    }
-    pub fn get_symbol_by_index(&self, index: usize) -> Result<&Symbol, String> {
-        match self.symbols.get(index) {
-            Some(sym) => return Ok(sym),
-            None => return Err(format!("Index {} out of bound", index)),
-        }
-    }
-    pub fn get_function_index_by_address(&self, address: usize) -> Result<usize, String> {
-        match self.functions_by_address.get(&address) {
-            Some(index) => return Ok(*index),
-            None => return Err(format!("Function at address {} not found", address)),
-        }
-    }
-    fn insert_symbol_in_hash_maps(&mut self, index: usize, symbol: &Symbol) {
-        let name = symbol.get_name();
-        if let Some(name) = name {
-            self.symbols_by_name
-                .insert(String::from(name), index as usize);
-        }
-        if (symbol.properties.get_kind() as u8 == Kind::Prototype as u8
-            || symbol.properties.get_kind() as u8 == Kind::Func as u8)
-            && !symbol.properties.has_flag(Flag::ClassVar)
-            && symbol.properties.has_flag(Flag::Const)
-        {
-            self.functions_by_address
-                .insert(symbol.get_address().unwrap().get() as usize, index as usize);
-        }
-    }
-    pub fn insert(&mut self, index: usize, symbol: Symbol) -> usize {
-        self.insert_symbol_in_hash_maps(index, symbol);
-        self.symbols.insert(index, symbol);
-        self.symbols.len()
-    }
-    pub fn push(&mut self, symbol: Symbol) -> usize {
-        let index = self.symbols.len();
-        self.insert_symbol_in_hash_maps(index, symbol);
-        self.symbols.push(symbol);
-    }
-    pub fn iterate_symbols_of_class(&self, class_name: &str, callback: &dyn Fn(usize, &Symbol)) {
-        let base = self.get_symbol_index_by_name(class_name).unwrap();
-        self.symbols.iter().enumerate().for_each(|(index, symbol)| {
-            if symbol.properties.element.get_kind() as u8 != Kind::Instance as u8 {
-                return;
-            }
-            let parent_address = match symbol.parent {
-                Some(address) => address.get(),
-                None => return,
-            };
-            let parent = self.get_symbol_by_index(parent_address as usize).unwrap();
-
-            let parent_base = if parent.properties.element.get_kind() as u8 == Kind::Prototype as u8
-            {
-                match parent.parent {
-                    Some(address) => address.get(),
-                    None => parent_address,
-                }
-            } else {
-                parent_address
-            };
-            if base == parent_base as usize {
-                callback(index, symbol);
-            }
-        });
+    pub fn set_class_member(&mut self, offset: u32, array_size: u32) {
+        self.class_member_offset = NonZeroU32::new(offset);
+        self.class_member_array_size = NonZeroU32::new(array_size);
     }
 }

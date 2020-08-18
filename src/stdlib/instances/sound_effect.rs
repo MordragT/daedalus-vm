@@ -1,7 +1,8 @@
+use super::Instance;
 use std::num::NonZeroI32;
-
 #[derive(Default)]
 pub struct SoundEffect {
+    instance_symbol: usize,
     file: String,
     pitch_off: Option<NonZeroI32>,
     pitch_var: Option<NonZeroI32>,
@@ -17,20 +18,11 @@ impl SoundEffect {
         Default::default()
     }
 }
-
-#[derive(Default)]
-pub struct MusicTheme {
-    file: String,
-    vol: f32,
-    loop_: i32,
-    reverb_mix: f32,
-    reverb_time: f32,
-    trans_type: i32,
-    trans_sub_type: i32,
-}
-
-impl MusicTheme {
-    pub fn new() -> MusicTheme {
-        Default::default()
+impl Instance for SoundEffect {
+    fn get_instance_symbol(&self) -> usize {
+        self.instance_symbol
+    }
+    fn set_instance_symbol(&mut self, instance_symbol: usize) {
+        self.instance_symbol = instance_symbol;
     }
 }

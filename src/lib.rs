@@ -1,4 +1,4 @@
-pub mod file;
+pub mod game_state;
 pub mod stdlib;
 pub mod vm;
 #[cfg(test)]

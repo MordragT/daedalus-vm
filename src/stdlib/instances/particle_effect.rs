@@ -1,5 +1,7 @@
+use super::Instance;
 #[derive(Default)]
 pub struct ParticleEffect {
+    instance_symbol: usize,
     // 1) Emitter: zeitliches  Austoss-Verhalten, particles-per-second
     pps_value: f32,
     pps_scale_keys: String,
@@ -96,5 +98,14 @@ pub struct ParticleEffect {
 impl ParticleEffect {
     pub fn new() -> ParticleEffect {
         Default::default()
+    }
+}
+
+impl Instance for ParticleEffect {
+    fn get_instance_symbol(&self) -> usize {
+        self.instance_symbol
+    }
+    fn set_instance_symbol(&mut self, instance_symbol: usize) {
+        self.instance_symbol = instance_symbol;
     }
 }

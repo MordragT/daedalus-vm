@@ -1,22 +1,12 @@
-use super::file::symbol::{Data, Kind, Symbol, SymbolBuilder};
-use super::file::{File, Operator, StackOpCode};
+use file::symbol::{Data, Kind, Symbol, SymbolBuilder};
+use file::{File, Operator, StackOpCode};
+use crate::game_state::GameState;
 use std::collections::HashMap;
-use zen_memory::GenericHandle;
+use zen_memory::Handle;
+
+mod file;
 
 const NUM_FAKE_STRING_SYMBOLS: u8 = 5;
-pub enum InstanceClass {
-    Npc,
-    Mission,
-    Info,
-    Item,
-    ItemReact,
-    Focus,
-    Menu,
-    MenuItem,
-    Sfx,
-    Pfx,
-    MusicTheme,
-}
 enum AddressType {
     Address(usize),
     SymbolIndex(usize),
@@ -45,7 +35,7 @@ impl From<Operator> for StackValue {
     }
 }
 struct VirtualMachineState {
-    current_instance_handle: GenericHandle,
+    current_instance_handle: Handle,
     current_instance_class: InstanceClass,
     program_counter: usize,
     stack: Vec<StackValue>,
@@ -60,7 +50,7 @@ pub struct VirtualMachine {
     call_stack: Vec<AddressType>,
     externals_by_index: HashMap<usize, &dyn Fn(&VirtualMachine)>,
     current_instance: usize,
-    current_instance_handle: GenericHandle,
+    current_instance_handle: Handle,
     current_instance_class: InstanceClass,
     registered_instances: HashMap<InstanceClass, Vec<usize>>,
     game_state: GameState,
@@ -151,14 +141,14 @@ impl VirtualMachine {
     pub fn set_instance(
         &self,
         inst_symbol: &str,
-        handle: GenericHandle,
+        handle: Handle,
         instance_class: InstanceClass,
     ) {
     }
     pub fn set_current_instance(&self, sym_index: usize) {}
     pub fn initialise_instance(
         &self,
-        handle: GenericHandle,
+        handle: Handle,
         sym_index: usize,
         instance_class: InstanceClass,
     ) {
@@ -166,7 +156,7 @@ impl VirtualMachine {
     pub fn get_registered_instances_of(&self, instance_class: InstanceClass) -> Vec<usize> {}
     pub fn get_current_instance_data(&self) -> Box<Data> {}
     pub fn get_current_instance_class(&self) -> InstanceClass {}
-    pub fn get_current_instance_handle(&self) -> GenericHandle {}
+    pub fn get_current_instance_handle(&self) -> Handle {}
 
     pub fn get_file(&self) -> File {}
     pub fn get_game_state(&self) -> GameState {}

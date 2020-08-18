@@ -1,6 +1,6 @@
 use enumflags2::BitFlags;
 
-use super::shared::*;
+use super::*;
 
 #[derive(Default)]
 struct Attribute {
@@ -25,6 +25,7 @@ pub enum Flag {
 }
 #[derive(Default)]
 pub struct Npc {
+    instance_symbol: usize,
     id: i32,
     name: [String; 5],
     slot: String,
@@ -55,7 +56,7 @@ pub struct Npc {
     senses_range: i32,
 
     ai_var: Vec<i32>,
-    wp: String,
+    waypoint: String,
 
     exp: i32,
     exp_next: i32,
@@ -70,5 +71,17 @@ pub struct Npc {
 impl Npc {
     pub fn new() -> Npc {
         Default::default()
+    }
+    pub fn set_waypoint(&mut self, waypoint: &str) {
+        self.waypoint = waypoint.to_owned();
+    }
+}
+
+impl Instance for Npc {
+    fn get_instance_symbol(&self) -> usize {
+        self.instance_symbol
+    }
+    fn set_instance_symbol(&mut self, instance_symbol: usize) {
+        self.instance_symbol = instance_symbol;
     }
 }

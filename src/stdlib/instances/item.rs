@@ -1,21 +1,26 @@
-use super::shared::*;
+use super::*;
 use enumflags2::BitFlags;
 
 #[derive(BitFlags, Copy, Clone)]
 #[repr(u32)]
 pub enum Categories {
     Nil = 1 << 0,
+    /// Equipable
     Nf = 1 << 1,
+    /// Equipable
     Ff = 1 << 2,
     Mun = 1 << 3,
+    /// Equipable
     Armor = 1 << 4,
     Food = 1 << 5,
     Docs = 1 << 6,
     Potion = 1 << 7,
     Light = 1 << 8,
+    /// Equipable
     Rune = 1 << 9,
+    /// Equipable
     Magic = 1 << 31,
-    Equipable = Nf | Ff | Armor | Rune | Magic,
+    //Equipable = Nf | Ff | Armor | Rune | Magic,
 }
 
 #[derive(BitFlags, Copy, Clone)]
@@ -35,6 +40,7 @@ pub enum Flags {
 }
 #[derive(Default)]
 pub struct Item {
+    instance_symbol: usize,
     id: i32,
     name: String,
     name_id: String,
@@ -83,28 +89,20 @@ pub struct Item {
     inv_rot: (i32, i32, i32),
     inv_animate: i32,
 
-    amount: u32,
+    pub amount: u32,
 }
 
 impl Item {
-    pub fn new() -> Item {
+    pub fn new() -> Self {
         Default::default()
     }
 }
 
-#[derive(Default)]
-pub struct ItemReact {
-    npc: i32,
-    trade_item: i32,
-    trade_amount: i32,
-    requested_cat: i32,
-    requested_item: i32,
-    requested_amount: i32,
-    reaction: u32,
-}
-
-impl ItemReact {
-    pub fn new() -> ItemReact {
-        Default::default()
+impl Instance for Item {
+    fn get_instance_symbol(&self) -> usize {
+        self.instance_symbol
+    }
+    fn set_instance_symbol(&mut self, instance_symbol: usize) {
+        self.instance_symbol = instance_symbol;
     }
 }
