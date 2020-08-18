@@ -3,7 +3,7 @@ use std::num::{NonZeroI32, NonZeroU8};
 use symbol::{Data, Flag, Kind, Properties, SymTable, SymbolBuilder};
 use zen_parser::ZenParser;
 
-mod symbol;
+pub mod symbol;
 
 #[repr(u8)]
 pub enum Operator {
@@ -107,8 +107,11 @@ impl StackOpCode {
         self.index = NonZeroU8::new(index);
         self
     }
+    pub fn get_operator(&self) -> Operator {
+        self.operator
+    }
 }
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct Stack {
     offset: usize,
     size: usize,
@@ -123,8 +126,8 @@ pub struct File {
 }
 
 impl File {
-    pub fn new() -> Result<File, String> {
-        let parser = ZenParser::new();
+    pub fn open(file: String) -> Result<File, String> {
+        let parser = ZenParser::new(file);
         let version = parser.read_binary::<u8>().unwrap();
         println!("Version: {}", version);
         println!("Reading Sym Table...");
@@ -299,4 +302,10 @@ impl File {
         };
         stack_op_code
     }
+
+    // pub fn add_symbol(&mut self) -> usize {
+    //     let builder = SymbolBuilder::new("").with_properties(Default::default());
+    //     let symbol = builder.build().unwrap();
+    //     self.sym_table.push(symbol)
+    // }
 }

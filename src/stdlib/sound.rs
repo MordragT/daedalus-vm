@@ -1,7 +1,7 @@
 use std::num::NonZeroI32;
 
 #[derive(Default)]
-pub struct Sfx {
+pub struct SoundEffect {
     file: String,
     pitch_off: Option<NonZeroI32>,
     pitch_var: Option<NonZeroI32>,
@@ -12,8 +12,8 @@ pub struct Sfx {
     reverb_level: f32,
     pfx_name: String,
 }
-impl Sfx {
-    pub fn new() -> Sfx {
+impl SoundEffect {
+    pub fn new() -> SoundEffect {
         Default::default()
     }
 }

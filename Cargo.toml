@@ -10,3 +10,4 @@ edition = "2018"
 bitfield = "0.13.2"
 enumflags2 = "0.6.4"
 zen-parser = { path = "../zen-parser" }
+zen-memory = { path = "../zen-memory" }

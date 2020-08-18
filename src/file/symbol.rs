@@ -1,23 +1,11 @@
 use bitfield::{bitfield, BitRange};
+use enumflags2::BitFlags;
 use std::collections::HashMap;
 use std::mem;
 use std::num::{NonZeroI32, NonZeroU32};
 
-enum InstanceClass {
-    Npc,
-    Mission,
-    Info,
-    Item,
-    ItemReact,
-    Focus,
-    Menu,
-    MenuItem,
-    Sfx,
-    Pfx,
-    MusicTheme,
-}
 #[repr(u8)]
-#[derive(Copy, Clone)]
+#[derive(BitFlags, Copy, Clone)]
 pub enum Flag {
     Const = 0b00001,
     Return = 0b00010,
@@ -26,21 +14,21 @@ pub enum Flag {
     Merged = 0b10000,
 }
 #[repr(u8)]
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Kind {
-    Void,
-    Float,
-    Int,
-    CharString,
-    Class,
-    Func,
-    Prototype,
-    Instance,
+    Void = 0,
+    Float = 1,
+    Int = 2,
+    CharString = 3,
+    Class = 4,
+    Func = 5,
+    Prototype = 6,
+    Instance = 7,
 }
 pub enum Data {
     Float(f32),
     Int(i32),
-    Char(char),
+    CharString(String),
 }
 
 bitfield! {
@@ -63,20 +51,6 @@ impl BitRange<Kind> for Element {
         self.0 = (value as u32) << lsb;
     }
 }
-
-// impl BitRange<Flag> for Element {
-//     fn bit_range(&self, msb: usize, lsb: usize) -> Flag {
-//         let width = msb - lsb + 1;
-//         let mask = (1 << width) - 1;
-//         let num = ((self.0 >> lsb) & mask) as u8;
-//         let flag: Flag = unsafe { mem::transmute(num) };
-//         flag
-//     }
-//     fn set_bit_range(&mut self, msb: usize, lsb: usize, value: Flag) {
-//         self.0 = (value as u32) << lsb;
-//     }
-// }
-
 bitfield! {
     struct Structure(u32);
     u32, get_value, set_value: 19, 0;
@@ -87,6 +61,7 @@ bitfield! {
     u32, get_value, set_value: 24, 0;
     u32, get_reserved, set_reserved: 32, 24;
 }
+#[derive(Default)]
 pub struct Properties {
     off_cls_ret: i32,
     element: Element,
@@ -158,6 +133,18 @@ impl SymbolBuilder {
             address: None,
             data: None,
         }
+    }
+    pub fn set_kind(&mut self, kind: Kind) -> &mut Self {
+        if self.data.is_none() {
+            match kind {
+                Kind::CharString => self.with_data(vec![Data::CharString("")]),
+                Kind::Float => self.with_data(vec![Data::Float(0.0)]),
+                Kind::Int => self.with_data(vec![Data::Int(0)]),
+                _ => (),
+            }
+        }
+        self.element.set_kind(kind);
+        self
     }
     pub fn with_properties(&mut self, properties: Properties) -> &mut Self {
         self.properties = Some(properties);
@@ -236,12 +223,21 @@ impl Symbol {
             None => return Err("Address is not specified."),
         }
     }
-    // pub fn get_data(&self) -> Result<Vec<Data>, &str> {
-    //     match self.data {
-    //         Some(data) => return Ok(data),
-    //         None => return Err("Data not specified"),
-    //     }
-    // }
+    pub fn set_address(&mut self, address: u32) {
+        self.address = NonZeroU32::new(address);
+    }
+    pub fn nth(&self, index: usize) -> Result<Data, &str> {
+        match self.data {
+            Some(data) => return Ok(data.nth(index)),
+            None => return Err("Data not specified"),
+        }
+    }
+    pub fn get(&self) -> Result<Box<Vec<Data>>, &str> {
+        match self.data {
+            Some(data) => Ok(Box::new(data)),
+            None => return Err("Data not specified"),
+        }
+    }
 }
 pub struct SymTable {
     sort_table: Vec<u32>,
@@ -303,7 +299,7 @@ impl SymTable {
             None => return Err(format!("Function at address {} not found", address)),
         }
     }
-    pub fn insert_symbol(&mut self, index: usize, symbol: Symbol) -> usize {
+    fn insert_symbol_in_hash_maps(&mut self, index: usize, symbol: &Symbol) {
         let name = symbol.get_name();
         if let Some(name) = name {
             self.symbols_by_name
@@ -317,8 +313,16 @@ impl SymTable {
             self.functions_by_address
                 .insert(symbol.get_address().unwrap().get() as usize, index as usize);
         }
+    }
+    pub fn insert(&mut self, index: usize, symbol: Symbol) -> usize {
+        self.insert_symbol_in_hash_maps(index, symbol);
         self.symbols.insert(index, symbol);
         self.symbols.len()
+    }
+    pub fn push(&mut self, symbol: Symbol) -> usize {
+        let index = self.symbols.len();
+        self.insert_symbol_in_hash_maps(index, symbol);
+        self.symbols.push(symbol);
     }
     pub fn iterate_symbols_of_class(&self, class_name: &str, callback: &dyn Fn(usize, &Symbol)) {
         let base = self.get_symbol_index_by_name(class_name).unwrap();

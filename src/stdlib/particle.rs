@@ -1,5 +1,5 @@
 #[derive(Default)]
-pub struct Particle {
+pub struct ParticleEffect {
     // 1) Emitter: zeitliches  Austoss-Verhalten, particles-per-second
     pps_value: f32,
     pps_scale_keys: String,
@@ -93,8 +93,8 @@ pub struct Particle {
     b_is_ambient_pfx: i32,
 }
 
-impl Particle {
-    pub fn new() -> Particle {
+impl ParticleEffect {
+    pub fn new() -> ParticleEffect {
         Default::default()
     }
 }
