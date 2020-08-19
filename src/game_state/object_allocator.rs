@@ -31,16 +31,10 @@ impl<T: Default> ObjectAllocator<T> {
         self.current -= 1;
         self.allocator.remove(handle);
     }
-    pub fn get(&self, handle: &Handle) -> Result<&T, &str> {
-        match self.allocator.get(handle) {
-            Some(val) => Ok(val),
-            None => Err("Could not get value, pointed to from the handle"),
-        }
+    pub fn get(&self, handle: &Handle) -> Option<&T> {
+        self.allocator.get(handle)
     }
-    pub fn get_mut(&self, handle: &Handle) -> Result<&mut T, &str> {
-        match self.allocator.get_mut(handle) {
-            Some(val) => Ok(val),
-            None => Err("Could not get value, pointed to from the handle"),
-        }
+    pub fn get_mut(&self, handle: &Handle) -> Option<&mut T> {
+        self.allocator.get_mut(handle)
     }
 }

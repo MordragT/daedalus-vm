@@ -12,7 +12,7 @@ pub struct MusicTheme {
 }
 
 impl MusicTheme {
-    pub fn new() -> MusicTheme {
+    pub fn new() -> Self {
         Default::default()
     }
 }

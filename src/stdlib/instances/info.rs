@@ -27,7 +27,7 @@ pub struct Info {
 }
 
 impl Info {
-    pub fn new() -> Info {
+    pub fn new() -> Self {
         Default::default()
     }
     pub fn add_choice(&mut self, choice: SubChoice) {

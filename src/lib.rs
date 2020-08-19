@@ -1,3 +1,5 @@
+#![feature(vec_remove_item)]
+
 pub mod game_state;
 pub mod stdlib;
 pub mod vm;

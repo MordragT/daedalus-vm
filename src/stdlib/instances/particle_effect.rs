@@ -96,7 +96,7 @@ pub struct ParticleEffect {
 }
 
 impl ParticleEffect {
-    pub fn new() -> ParticleEffect {
+    pub fn new() -> Self {
         Default::default()
     }
 }

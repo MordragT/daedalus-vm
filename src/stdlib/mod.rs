@@ -21,6 +21,7 @@ pub enum SubTransitionType {
     Measure,
 }
 
+#[derive(Eq, PartialEq, Hash)]
 pub enum InstanceClass {
     Npc,
     Mission,

@@ -22,7 +22,7 @@ pub struct Focus {
     mob_prio: i32,
 }
 impl Focus {
-    pub fn new() -> Focus {
+    pub fn new() -> Self {
         Default::default()
     }
 }

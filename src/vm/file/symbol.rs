@@ -3,13 +3,16 @@ use crate::stdlib::InstanceClass;
 use bitfield::{bitfield, BitRange};
 use std::mem;
 use std::num::{NonZeroI32, NonZeroU32};
+use zen_memory::Handle;
+
 pub enum Data {
     Float(f32),
     Int(i32),
-    CharString(String),
+    Char(char),
 }
 
 bitfield! {
+    #[derive(Default)]
     struct Element(u32);
     u32, get_count, set_count: 12, 0;
     Kind, get_kind, set_kind: 16, 12;
@@ -30,11 +33,13 @@ impl BitRange<Kind> for Element {
     }
 }
 bitfield! {
+    #[derive(Default)]
     struct Structure(u32);
     u32, get_value, set_value: 19, 0;
     u32, get_reserved, set_reserved: 32, 19;
 }
 bitfield! {
+    #[derive(Default)]
     struct CharStructure(u32);
     u32, get_value, set_value: 24, 0;
     u32, get_reserved, set_reserved: 32, 24;
@@ -116,18 +121,18 @@ impl SymbolBuilder {
             data: None,
         }
     }
-    pub fn set_kind(&mut self, kind: Kind) -> &mut Self {
-        if self.data.is_none() {
-            match kind {
-                Kind::CharString => self.with_data(vec![Data::CharString("")]),
-                Kind::Float => self.with_data(vec![Data::Float(0.0)]),
-                Kind::Int => self.with_data(vec![Data::Int(0)]),
-                _ => (),
-            }
-        }
-        self.element.set_kind(kind);
-        self
-    }
+    // pub fn set_kind(&mut self, kind: Kind) -> &mut Self {
+    //     if self.data.is_none() {
+    //         match kind {
+    //             Kind::CharString => self.with_data(vec![Data::CharString("")]),
+    //             Kind::Float => self.with_data(vec![Data::Float(0.0)]),
+    //             Kind::Int => self.with_data(vec![Data::Int(0)]),
+    //             _ => (),
+    //         }
+    //     }
+    //     self.properties.element.set_kind(kind);
+    //     self
+    // }
     pub fn with_properties(&mut self, properties: Properties) -> &mut Self {
         self.properties = Some(properties);
         self
@@ -141,8 +146,8 @@ impl SymbolBuilder {
         self
     }
     pub fn with_instance_data(&mut self, handle: Handle, kind: InstanceClass) -> &mut Self {
-        self.instance_data_handle = handle;
-        self.instance_data_class = kind;
+        self.instance_data_handle = Some(handle);
+        self.instance_data_class = Some(kind);
         self
     }
     pub fn with_parent(&mut self, parent: u32) -> &mut Self {
@@ -212,6 +217,9 @@ impl Symbol {
             return Some(self.name.as_str());
         }
     }
+    pub fn get_parent(&self) -> Option<NonZeroU32> {
+        self.parent
+    }
     pub fn get_address(&self) -> Result<NonZeroU32, &str> {
         match self.address {
             Some(address) => return Ok(address),
@@ -221,20 +229,25 @@ impl Symbol {
     pub fn set_address(&mut self, address: u32) {
         self.address = NonZeroU32::new(address);
     }
-    pub fn nth(&self, index: usize) -> Result<Data, &str> {
+    pub fn get_data_at(&self, index: usize) -> Result<Data, &str> {
         match self.data {
-            Some(data) => return Ok(data.nth(index)),
-            None => return Err("Data not specified"),
+            Some(data) => {
+                return match data.get(index) {
+                    Some(data) => Ok(*data),
+                    None => Err("Index specified is not pointing to any data"),
+                }
+            }
+            None => Err("Data not specified"),
         }
     }
-    pub fn get(&self) -> Result<Box<Vec<Data>>, &str> {
+    pub fn get_data(&self) -> Result<Box<Vec<Data>>, &str> {
         match self.data {
             Some(data) => Ok(Box::new(data)),
             None => return Err("Data not specified"),
         }
     }
-    pub fn set_class_member(&mut self, offset: u32, array_size: u32) {
-        self.class_member_offset = NonZeroU32::new(offset);
-        self.class_member_array_size = NonZeroU32::new(array_size);
+    pub fn set_class_member(&mut self, offset: i32, array_size: i32) {
+        self.class_member_offset = NonZeroI32::new(offset);
+        self.class_member_array_size = NonZeroI32::new(array_size);
     }
 }

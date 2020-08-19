@@ -10,4 +10,5 @@ pub use super::instances::npc::Npc;
 pub use super::instances::particle_effect::ParticleEffect;
 pub use super::instances::sound_effect::SoundEffect;
 pub use super::instances::spell::Spell;
+pub use super::instances::Instance;
 pub use super::InstanceClass;

@@ -69,7 +69,7 @@ pub struct Npc {
 }
 
 impl Npc {
-    pub fn new() -> Npc {
+    pub fn new() -> Self {
         Default::default()
     }
     pub fn set_waypoint(&mut self, waypoint: &str) {

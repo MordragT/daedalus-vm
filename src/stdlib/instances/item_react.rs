@@ -12,7 +12,7 @@ pub struct ItemReact {
 }
 
 impl ItemReact {
-    pub fn new() -> ItemReact {
+    pub fn new() -> Self {
         Default::default()
     }
 }

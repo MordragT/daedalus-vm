@@ -1,9 +1,14 @@
-use file::symbol::{Data, Kind, Symbol, SymbolBuilder};
-use file::{File, Operator, StackOpCode};
-use crate::game_state::GameState;
+use crate::game_state::{GameExternals, GameState};
+use crate::stdlib::InstanceClass;
+use file::file::File;
+use file::stack::StackOpCode;
+use file::symbol::{Data, Symbol, SymbolBuilder};
+use file::{Kind, Operator};
 use std::collections::HashMap;
+use std::mem;
 use zen_memory::Handle;
 
+mod external_funcs;
 mod file;
 
 const NUM_FAKE_STRING_SYMBOLS: u8 = 5;
@@ -22,7 +27,7 @@ impl CallStackFrame {
 struct StackValue(u32);
 impl StackValue {
     pub fn get_operator(&self) -> Operator {
-        self.0 as Operator
+        unsafe { mem::transmute(self.0) }
     }
     pub fn get(&self) -> u32 {
         self.0
@@ -42,44 +47,64 @@ struct VirtualMachineState {
     call_stack: Vec<usize>,
     symbol: Symbol,
 }
-#[derive(Default)]
-pub struct VirtualMachine {
+pub struct VirtualMachine<'a> {
     file: File,
     program_counter: usize,
     stack: Vec<StackValue>,
     call_stack: Vec<AddressType>,
-    externals_by_index: HashMap<usize, &dyn Fn(&VirtualMachine)>,
+    externals_by_index: HashMap<usize, &'a dyn Fn(&VirtualMachine)>,
     current_instance: usize,
     current_instance_handle: Handle,
-    current_instance_class: InstanceClass,
+    current_instance_class: Option<InstanceClass>,
     registered_instances: HashMap<InstanceClass, Vec<usize>>,
-    game_state: GameState,
+    game_state: GameState<'a>,
     state_stack: Vec<VirtualMachineState>,
     fake_string_symbols: Vec<usize>,
 }
 
-impl VirtualMachine {
-    pub fn new(file: String) -> VirtualMachine {
+impl<'a> VirtualMachine<'a> {
+    pub fn new(file: String) -> VirtualMachine<'a> {
         let file = File::open(file).unwrap();
-        let vm = VirtualMachine {
+        let virtual_machine = VirtualMachine {
             file,
-            ..Default::default()
+            program_counter: 0,
+            stack: vec![],
+            call_stack: vec![],
+            externals_by_index: HashMap::new(),
+            current_instance: 0,
+            current_instance_handle: Handle::new(),
+            current_instance_class: None,
+            registered_instances: HashMap::new(),
+            game_state: GameState::new(GameExternals::new()),
+            state_stack: vec![],
+            fake_string_symbols: vec![],
         };
+        // Register functions
+        virtual_machine
+            .register_external_func("insert_item", |virtual_machine: &VirtualMachine| {});
+
         for index in 0..NUM_FAKE_STRING_SYMBOLS {
             let builder = SymbolBuilder::new("")
                 .with_properties(Default::default())
                 .set_kind(Kind::CharString);
             let index = file.sym_table.push(builder.build());
-            vm.fake_string_symbols.push(index);
+            virtual_machine.fake_string_symbols.push(index);
         }
-        vm.current_instance_handle.invalidate();
+        virtual_machine.current_instance_handle.invalidate();
     }
 
     pub fn get_current_instruction(&self) -> StackOpCode {}
     pub fn prepare_run_func(&self) {}
     pub fn run_func_by_sym_index(&self, sym_index: usize) -> i32 {}
     pub fn set_program_counter(&self, target: u32) {}
-    //pub fn register_external_func(&self, sym_name: &str, func: &dyn Fn(&VirtualMachine)) {}
+    pub fn register_external_func(&mut self, sym_name: &str, func: &'a dyn Fn(&VirtualMachine)) {
+        match self.file.sym_table.get_symbol_index_by_name(sym_name) {
+            Some(index) => {
+                self.externals_by_index.insert(index, func);
+            }
+            None => (),
+        }
+    }
 
     pub fn push<T: Into<u32>>(&mut self, value: T) {
         self.stack.push(value);
@@ -91,11 +116,14 @@ impl VirtualMachine {
         self.stack.push(StackValue::from(Operator::PushVar));
     }
     pub fn push_var_by_name(&mut self, sym_name: &str) {
-        let index = self.file.sym_table.get_symbol_index_by_name(sym_name).unwrap();
+        let index = self
+            .file
+            .sym_table
+            .get_symbol_index_by_name(sym_name)
+            .unwrap();
         self.push_var(index, 0);
     }
     pub fn push_state(&self) {}
-
 
     pub fn set_return<T>(&self, v: T) {}
     pub fn pop_state(&self) {}
@@ -110,9 +138,16 @@ impl VirtualMachine {
             Operator::PushInt => T::from(value),
             Operator::PushVar => {
                 let index = self.stack.pop().unwrap().get();
-                T::from(self.file.sym_table.get_symbol_by_index(value).unwrap().nth(index))
+                T::from(
+                    self.file
+                        .sym_table
+                        .get_symbol_by_index(value as usize)
+                        .unwrap()
+                        .get_data_at(index)
+                        .unwrap(),
+                )
             }
-            _ => T::from(0)
+            _ => T::from(0),
         }
     }
     /// Returns (value, array_index)
@@ -134,17 +169,11 @@ impl VirtualMachine {
                 self.stack.pop();
                 (value, index)
             }
-            _ => (0xffffffff, 0)
+            _ => (0xffffffff, 0),
         }
     }
 
-    pub fn set_instance(
-        &self,
-        inst_symbol: &str,
-        handle: Handle,
-        instance_class: InstanceClass,
-    ) {
-    }
+    pub fn set_instance(&self, inst_symbol: &str, handle: Handle, instance_class: InstanceClass) {}
     pub fn set_current_instance(&self, sym_index: usize) {}
     pub fn initialise_instance(
         &self,
@@ -200,9 +229,8 @@ impl VirtualMachine {
             Operator::Equal => self.push::<i32>(self.pop::<i32>() == self.pop::<i32>()),
             Operator::NotEqual => self.push::<i32>(self.pop::<i32>() != self.pop::<i32>()),
             Operator::GreaterOrEqual => self.push::<i32>(self.pop::<i32>() >= self.pop::<i32>()),
-            Operator::AssignAdd => {
-                let 
-            }
+            Operator::AssignAdd => {}
+            _ => (),
         }
     }
 

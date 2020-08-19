@@ -20,7 +20,7 @@ pub struct Mission {
     running: u32,
 }
 impl Mission {
-    pub fn new() -> Mission {
+    pub fn new() -> Self {
         Default::default()
     }
 }

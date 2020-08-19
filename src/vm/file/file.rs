@@ -99,7 +99,7 @@ impl File {
                 .with_properties(properties)
                 .with_parent(parser.read_binary::<u32>().unwrap());
 
-            sym_table.insert_symbol(index as usize, symbol_builder.build().unwrap());
+            sym_table.insert(index as usize, symbol_builder.build().unwrap());
         }
         let size = parser.read_binary::<i32>().unwrap() as usize;
         let offset = parser.get_seek();

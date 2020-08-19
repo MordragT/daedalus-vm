@@ -17,7 +17,7 @@ pub struct Spell {
 }
 
 impl Spell {
-    pub fn new() -> Spell {
+    pub fn new() -> Self {
         Default::default()
     }
 }

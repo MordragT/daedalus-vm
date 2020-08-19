@@ -14,7 +14,7 @@ pub struct SoundEffect {
     pfx_name: String,
 }
 impl SoundEffect {
-    pub fn new() -> SoundEffect {
+    pub fn new() -> Self {
         Default::default()
     }
 }

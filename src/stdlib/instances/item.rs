@@ -38,6 +38,13 @@ pub enum Flags {
     Belt = 1 << 24,
     Mission = 1 << 12,
 }
+
+impl Default for Flags {
+    fn default() -> Self {
+        BitFlags::<Flags>::emtpy()
+    }
+}
+
 #[derive(Default)]
 pub struct Item {
     instance_symbol: usize,

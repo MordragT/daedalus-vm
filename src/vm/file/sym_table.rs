@@ -30,12 +30,6 @@ impl SymTable {
     pub fn write_sort_table(&mut self, table: &[u32]) {
         self.sort_table = Vec::from(table);
     }
-    pub fn has_symbol_name(&self, sym_name: &str) -> bool {
-        match self.symbols_by_name.get(sym_name) {
-            Some(_) => true,
-            None => false,
-        }
-    }
     pub fn get_symbol_by_name(&self, sym_name: &str) -> Result<&Symbol, String> {
         match self.symbols_by_name.get(sym_name) {
             Some(index) => Ok(self.symbols.get(*index).unwrap()),
@@ -48,10 +42,10 @@ impl SymTable {
             None => Err(format!("Symbol {} not found", sym_name)),
         }
     }
-    pub fn get_symbol_index_by_name(&self, sym_name: &str) -> Result<usize, String> {
+    pub fn get_symbol_index_by_name(&self, sym_name: &str) -> Option<usize> {
         match self.symbols_by_name.get(sym_name) {
-            Some(index) => Ok(*index),
-            None => Err(format!("Symbol {} not found", sym_name)),
+            Some(val) => Some(*val),
+            None => None,
         }
     }
     pub fn get_symbol_by_index(&self, index: usize) -> Result<&Symbol, String> {
@@ -82,31 +76,30 @@ impl SymTable {
         }
     }
     pub fn insert(&mut self, index: usize, symbol: Symbol) -> usize {
-        self.insert_symbol_in_hash_maps(index, symbol);
+        self.insert_symbol_in_hash_maps(index, &symbol);
         self.symbols.insert(index, symbol);
         self.symbols.len()
     }
     pub fn push(&mut self, symbol: Symbol) -> usize {
         let index = self.symbols.len();
-        self.insert_symbol_in_hash_maps(index, symbol);
+        self.insert_symbol_in_hash_maps(index, &symbol);
         self.symbols.push(symbol);
         index + 1
     }
     pub fn iterate_symbols_of_class(&self, class_name: &str, callback: &dyn Fn(usize, &Symbol)) {
         let base = self.get_symbol_index_by_name(class_name).unwrap();
         self.symbols.iter().enumerate().for_each(|(index, symbol)| {
-            if symbol.properties.element.get_kind() as u8 != Kind::Instance as u8 {
+            if symbol.properties.get_kind() as u8 != Kind::Instance as u8 {
                 return;
             }
-            let parent_address = match symbol.parent {
+            let parent_address = match symbol.get_parent() {
                 Some(address) => address.get(),
                 None => return,
             };
             let parent = self.get_symbol_by_index(parent_address as usize).unwrap();
 
-            let parent_base = if parent.properties.element.get_kind() as u8 == Kind::Prototype as u8
-            {
-                match parent.parent {
+            let parent_base = if parent.properties.get_kind() as u8 == Kind::Prototype as u8 {
+                match parent.get_parent() {
                     Some(address) => address.get(),
                     None => parent_address,
                 }
@@ -121,7 +114,7 @@ impl SymTable {
     pub fn register<I: Instance, M>(&self, sym_name: &str, instance: I, member: M) {
         match self.get_mut_symbol_by_name(sym_name) {
             Ok(symbol) => {
-                let offset = &member - &instance;
+                let offset = &member as *const u32 - &instance as *const u32;
                 symbol.set_class_member(offset, mem::size_of_val(member));
             }
             Err(_) => (),

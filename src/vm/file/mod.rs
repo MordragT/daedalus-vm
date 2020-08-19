@@ -1,9 +1,9 @@
 use enumflags2::BitFlags;
 
 pub mod file;
-mod stack;
-mod sym_table;
-mod symbol;
+pub mod stack;
+pub mod sym_table;
+pub mod symbol;
 
 #[repr(u8)]
 pub enum Operator {
