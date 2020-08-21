@@ -39,6 +39,9 @@ impl StackOpCode {
     pub fn get_operator(&self) -> Operator {
         self.operator
     }
+    pub fn get_operator_size(&self) -> usize {
+        self.operator_size
+    }
 }
 #[derive(Copy, Clone, Default)]
 pub struct Stack {

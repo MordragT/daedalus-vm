@@ -1,15 +1,10 @@
-use super::{Flag, Kind};
+use super::{Flag, Kind, Operator};
 use crate::stdlib::InstanceClass;
+use crate::vm::VirtualMachine;
 use bitfield::{bitfield, BitRange};
-use std::mem;
+use std::convert::{TryFrom, TryInto};
 use std::num::{NonZeroI32, NonZeroU32};
 use zen_memory::Handle;
-
-pub enum Data {
-    Float(f32),
-    Int(i32),
-    Char(char),
-}
 
 bitfield! {
     #[derive(Default)]
@@ -25,8 +20,7 @@ impl BitRange<Kind> for Element {
         let width = msb - lsb + 1;
         let mask = (1 << width) - 1;
         let num = ((self.0 >> lsb) & mask) as u8;
-        let kind: Kind = unsafe { mem::transmute(num) };
-        kind
+        num.try_into().unwrap()
     }
     fn set_bit_range(&mut self, msb: usize, lsb: usize, value: Kind) {
         self.0 = (value as u32) << lsb;
@@ -91,6 +85,42 @@ impl Properties {
         self.element.get_kind()
     }
 }
+pub enum Data {
+    IntSequence(Vec<u32>),
+    FloatSequence(Vec<f32>),
+    String(String),
+}
+
+impl TryInto<Vec<u32>> for Data {
+    type Error = ();
+    fn try_into(self) -> Result<Vec<u32>, Self::Error> {
+        match self {
+            Data::IntSequence(val) => Ok(val),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryInto<Vec<f32>> for Data {
+    type Error = ();
+    fn try_into(self) -> Result<Vec<f32>, Self::Error> {
+        match self {
+            Data::FloatSequence(val) => Ok(val),
+            _ => Err(()),
+        }
+    }
+}
+
+impl TryInto<String> for Data {
+    type Error = ();
+    fn try_into(self) -> Result<String, Self::Error> {
+        match self {
+            Data::String(val) => Ok(val),
+            _ => Err(()),
+        }
+    }
+}
+
 pub struct SymbolBuilder {
     name: String,
     properties: Option<Properties>,
@@ -104,7 +134,7 @@ pub struct SymbolBuilder {
     instance_data_class: Option<InstanceClass>,
     parent: Option<NonZeroU32>,
     address: Option<NonZeroU32>,
-    data: Option<Vec<Data>>,
+    data: Option<Data>,
 }
 
 impl SymbolBuilder {
@@ -158,7 +188,7 @@ impl SymbolBuilder {
         self.address = NonZeroU32::new(address);
         self
     }
-    pub fn with_data(&mut self, data: Vec<Data>) -> &mut Self {
+    pub fn with_data(&mut self, data: Data) -> &mut Self {
         self.data = Some(data);
         self
     }
@@ -205,7 +235,7 @@ pub struct Symbol {
     instance_data_class: Option<InstanceClass>,
     parent: Option<NonZeroU32>,
     address: Option<NonZeroU32>,
-    data: Option<Vec<Data>>,
+    data: Option<Data>,
 }
 
 impl Symbol {
@@ -220,30 +250,53 @@ impl Symbol {
     pub fn get_parent(&self) -> Option<NonZeroU32> {
         self.parent
     }
-    pub fn get_address(&self) -> Result<NonZeroU32, &str> {
-        match self.address {
-            Some(address) => return Ok(address),
-            None => return Err("Address is not specified."),
-        }
+    pub fn get_address(&self) -> Option<NonZeroU32> {
+        self.address
     }
     pub fn set_address(&mut self, address: u32) {
         self.address = NonZeroU32::new(address);
     }
-    pub fn get_data_at(&self, index: usize) -> Result<Data, &str> {
+    // pub fn get_data_at(&self, index: usize) -> Result<Data, &str> {
+    //     match self.data {
+    //         Some(data) => {
+    //             return match data.get(index) {
+    //                 Some(data) => Ok(*data),
+    //                 None => Err("Index specified is not pointing to any data"),
+    //             }
+    //         }
+    //         None => Err("Data not specified"),
+    //     }
+    // }
+    pub fn get_data(&self) -> Option<&Data> {
         match self.data {
-            Some(data) => {
-                return match data.get(index) {
-                    Some(data) => Ok(*data),
-                    None => Err("Index specified is not pointing to any data"),
-                }
-            }
-            None => Err("Data not specified"),
+            Some(val) => Some(&val),
+            None => None,
         }
     }
-    pub fn get_data(&self) -> Result<Box<Vec<Data>>, &str> {
+    pub fn get_mut_data(&mut self) -> Option<&mut Data> {
         match self.data {
-            Some(data) => Ok(Box::new(data)),
-            None => return Err("Data not specified"),
+            Some(val) => Some(&mut val),
+            None => None,
+        }
+    }
+    pub fn get_string(&self) -> Option<&String> {
+        let string_result: Result<String, _> = match self.data {
+            Some(data) => data.try_into(),
+            None => return None,
+        };
+        match string_result {
+            Ok(string) => Some(&string),
+            Err(_) => None,
+        }
+    }
+    pub fn get_mut_string(&self) -> Option<&mut String> {
+        let string_result: Result<String, _> = match self.data {
+            Some(data) => data.try_into(),
+            None => return None,
+        };
+        match string_result {
+            Ok(string) => Some(&mut string),
+            Err(_) => None,
         }
     }
     pub fn set_class_member(&mut self, offset: i32, array_size: i32) {

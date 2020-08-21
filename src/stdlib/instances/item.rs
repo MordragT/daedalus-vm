@@ -41,7 +41,7 @@ pub enum Flags {
 
 impl Default for Flags {
     fn default() -> Self {
-        BitFlags::<Flags>::emtpy()
+        BitFlags::emtpy()
     }
 }
 

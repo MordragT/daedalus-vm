@@ -9,7 +9,6 @@ mod game_externals;
 mod object_allocator;
 
 const MAX_NUM_MISC: usize = 1024;
-
 const MAX_NUM_NPCS: usize = 12000;
 const MAX_NUM_ITEMS: usize = 12000;
 const MAX_NUM_MISSIONS: usize = 512;
